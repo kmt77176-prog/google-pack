@@ -16,10 +16,21 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      # GitHub Cloud ပေါ်တွင် zip ကို အလိုအလျောက် ဖြည်ခိုင်းခြင်း
-      - name: Unzip project files
+      # Zip ဖိုင်ကို ဖြည်ပြီး Folder တည်နေရာအမှန်ကို ရှာခိုင်းခြင်း
+      - name: Unzip and Move Files
         run: |
-          unzip pack.zip -d .
+          unzip pack.zip -d extracted_temp
+          # Zip ထဲတွင် Folder ထပ်ပါနေပါက ဖိုင်အားလုံးကို Root သို့ ဆွဲထုတ်ခြင်း
+          if [ -d extracted_temp/google-pack ]; then
+            mv extracted_temp/google-pack/* .
+            mv extracted_temp/google-pack/.* . 2>/dev/null || true
+          elif [ -d extracted_temp/pack ]; then
+            mv extracted_temp/pack/* .
+            mv extracted_temp/pack/.* . 2>/dev/null || true
+          else
+            mv extracted_temp/* . 2>/dev/null || true
+          fi
+          rm -rf extracted_temp
           
       - name: Install dependencies
         run: |
@@ -31,7 +42,13 @@ jobs:
         run: cargo build
         
       - name: Build WASM
-        run: wasm-pack build --dev --target web ./pack-wasm
+        run: |
+          if [ -d "./pack-wasm" ]; then
+            wasm-pack build --dev --target web ./pack-wasm
+          else
+            echo "pack-wasm folder not found at root"
+            exit 1
+          fi
         
       - name: Upload WebAssembly Artifacts
         uses: actions/upload-artifact@v4
@@ -46,10 +63,19 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      # Windows Cloud ပေါ်တွင် zip ကို အလိုအလျောက် ဖြည်ခိုင်းခြင်း
-      - name: Unzip project files on Windows
+      # Windows ပေါ်တွင် Zip ဖြည်ပြီး Folder တည်နေရာ ညှိခြင်း
+      - name: Unzip and Move Files on Windows
+        shell: pwsh
         run: |
-          Expand-Archive -Path pack.zip -DestinationPath .
+          Expand-Archive -Path pack.zip -DestinationPath extracted_temp
+          if (Test-Path "extracted_temp/google-pack") {
+              Move-Item -Path "extracted_temp/google-pack/*" -Destination "."
+          } elseif (Test-Path "extracted_temp/pack") {
+              Move-Item -Path "extracted_temp/pack/*" -Destination "."
+          } else {
+              Move-Item -Path "extracted_temp/*" -Destination "."
+          }
+          Remove-Item -Recurper-Force extracted_temp
 
       - name: Install Protobuf on Windows
         run: choco install protoc -y
@@ -62,3 +88,4 @@ jobs:
         with:
           name: google-pack-windows-exe
           path: target/release/pack.exe
+  
