@@ -16,11 +16,13 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      # Zip ဖိုင်ကို ဖြည်ပြီး Folder တည်နေရာအမှန်ကို ရှာခိုင်းခြင်း
+      # အမည်မရွေးဘဲ မည်သည့် zip ဖိုင်ကိုမဆို ရှာဖွေပြီး ဖြည်ခိုင်းခြင်း
       - name: Unzip and Move Files
         run: |
-          unzip pack.zip -d extracted_temp
-          # Zip ထဲတွင် Folder ထပ်ပါနေပါက ဖိုင်အားလုံးကို Root သို့ ဆွဲထုတ်ခြင်း
+          mkdir extracted_temp
+          find . -maxdepth 1 -name "*.zip" -exec unzip {} -d extracted_temp \;
+          
+          # Folder ဖွဲ့စည်းပုံကို စစ်ဆေးပြီး ဖိုင်များကို အပြင်သို့ ထုတ်ခြင်း
           if [ -d extracted_temp/google-pack ]; then
             mv extracted_temp/google-pack/* .
             mv extracted_temp/google-pack/.* . 2>/dev/null || true
@@ -28,7 +30,7 @@ jobs:
             mv extracted_temp/pack/* .
             mv extracted_temp/pack/.* . 2>/dev/null || true
           else
-            mv extracted_temp/* . 2>/dev/null || true
+            find extracted_temp -mindepth 1 -maxdepth 1 -type d -exec sh -c 'mv "$1"/* . && mv "$1"/.* . 2>/dev/null || true' _ {} \;
           fi
           rm -rf extracted_temp
           
@@ -43,10 +45,12 @@ jobs:
         
       - name: Build WASM
         run: |
-          if [ -d "./pack-wasm" ]; then
-            wasm-pack build --dev --target web ./pack-wasm
+          # pack-wasm folder ကို လိုက်ရှာပြီး wasm build လုပ်ခြင်း
+          WASM_DIR=$(find . -type d -name "pack-wasm" -print -quit)
+          if [ -n "$WASM_DIR" ]; then
+            wasm-pack build --dev --target web "$WASM_DIR"
           else
-            echo "pack-wasm folder not found at root"
+            echo "pack-wasm folder not found anywhere in the repository"
             exit 1
           fi
         
@@ -54,7 +58,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: google-pack-web-wasm
-          path: ./pack-wasm/pkg/
+          path: "**/pack-wasm/pkg/"
 
   # ၂။ Windows ပေါ်တွင် Native .exe ဖိုင်ကို Build လုပ်မည့်အပိုင်း
   build-windows:
@@ -63,19 +67,25 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      # Windows ပေါ်တွင် Zip ဖြည်ပြီး Folder တည်နေရာ ညှိခြင်း
+      # Windows ပေါ်တွင် မည်သည့် zip ဖိုင်ကိုမဆို ရှာဖွေပြီး ဖြည်ခိုင်းခြင်း
       - name: Unzip and Move Files on Windows
         shell: pwsh
         run: |
-          Expand-Archive -Path pack.zip -DestinationPath extracted_temp
-          if (Test-Path "extracted_temp/google-pack") {
-              Move-Item -Path "extracted_temp/google-pack/*" -Destination "."
-          } elseif (Test-Path "extracted_temp/pack") {
-              Move-Item -Path "extracted_temp/pack/*" -Destination "."
+          New-Item -ItemType Directory -Force -Path extracted_temp
+          $zipFile = Get-ChildItem -Filter *.zip | Select-Object -First 1
+          if ($zipFile) {
+              Expand-Archive -Path $zipFile.FullName -DestinationPath extracted_temp
+              $subDir = Get-ChildItem -Path extracted_temp -Directory | Select-Object -First 1
+              if ($subDir) {
+                  Move-Item -Path "$($subDir.FullName)/*" -Destination "."
+              } else {
+                  Move-Item -Path "extracted_temp/*" -Destination "."
+              }
           } else {
-              Move-Item -Path "extracted_temp/*" -Destination "."
+              echo "No zip file found in root"
+              exit 1
           }
-          Remove-Item -Recurper-Force extracted_temp
+          Remove-Item -Recurse -Force extracted_temp
 
       - name: Install Protobuf on Windows
         run: choco install protoc -y
@@ -87,5 +97,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: google-pack-windows-exe
-          path: target/release/pack.exe
-  
+          path: "**/target/release/*.exe"
