@@ -1,0 +1,64 @@
+name: Rust Build Google Pack
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ၁။ Linux ပေါ်တွင် WebAssembly (Wasm) ကို Build လုပ်မည့်အပိုင်း
+  build-web:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      # GitHub Cloud ပေါ်တွင် zip ကို အလိုအလျောက် ဖြည်ခိုင်းခြင်း
+      - name: Unzip project files
+        run: |
+          unzip pack.zip -d .
+          
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+          cargo install wasm-pack
+          
+      - name: Build Source
+        run: cargo build
+        
+      - name: Build WASM
+        run: wasm-pack build --dev --target web ./pack-wasm
+        
+      - name: Upload WebAssembly Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: google-pack-web-wasm
+          path: ./pack-wasm/pkg/
+
+  # ၂။ Windows ပေါ်တွင် Native .exe ဖိုင်ကို Build လုပ်မည့်အပိုင်း
+  build-windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      # Windows Cloud ပေါ်တွင် zip ကို အလိုအလျောက် ဖြည်ခိုင်းခြင်း
+      - name: Unzip project files on Windows
+        run: |
+          Expand-Archive -Path pack.zip -DestinationPath .
+
+      - name: Install Protobuf on Windows
+        run: choco install protoc -y
+
+      - name: Build Windows EXE
+        run: cargo build --release
+
+      - name: Upload Windows Executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: google-pack-windows-exe
+          path: target/release/pack.exe
